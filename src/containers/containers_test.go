@@ -6,22 +6,42 @@ import (
 	"container/ring"
 	"fmt"
 	"testing"
+	"time"
 )
 
 // 이중 연결리스트 테스트
 
 func Test_linkedlist(t *testing.T) {
+	elements := []*list.Element{}
 	l := list.New() //연결 리스트 생성
-	l.PushBack(10)
-	l.PushBack(20)
-	l.PushBack(1)
-	l.PushBack(100)
+	v1 := "message"
+
+	elements = append(elements, l.PushBack(v1))
+	elements = append(elements, l.PushBack(20))
+	elements = append(elements, l.PushBack(1))
+	elV1 := l.PushBack(100)
+	elements = append(elements, elV1)
+	elements = append(elements, l.PushBack(10))
+
+	l.Remove(elV1)
 
 	fmt.Println("Front", l.Front().Value)
 	fmt.Println("Back", l.Back().Value)
 
 	for i := l.Front(); i != nil; i = i.Next() { //연결 리스트의 맨 앞부터 끝까지 순회
-		fmt.Println(i.Value)
+		//fmt.Println(i.Value)
+		switch i.Value.(type) {
+		case string:
+			fmt.Println(i.Value.(string))
+		default:
+			fmt.Println(i.Value)
+		}
+	}
+
+	fmt.Println("-------")
+	for i, v := range elements {
+		fmt.Printf("[%d]element : %+v\n", i, v)
+
 	}
 
 }
@@ -88,4 +108,31 @@ func Test_Ring(t *testing.T) {
 	fmt.Println("Prev :", r.Prev().Value)
 	fmt.Println("Next :", r.Next().Value)
 
+}
+
+func f(x chan chan int) int {
+	c := make(chan int) //int 형 채널을 생성
+	fmt.Println("f() ... 1")
+	time.Sleep(10 * time.Microsecond)
+	fmt.Println("f() ... 2")
+	x <- c //생성된 채널을 채널 x에 보냄
+	fmt.Println("f() ... 3")
+	//time.Sleep(1000 * time.Microsecond)
+	re := <-c
+	fmt.Println("f() ... 4")
+	return re //채널 c에 들어온 값을 꺼내서 리턴
+}
+func Test_Channel(t *testing.T) {
+	x := make(chan chan int) //int 형 채널을 보내는 채널
+	fmt.Println("make chan - x")
+
+	go func() {
+		fmt.Println("go func()... in")
+		c := <-x //x에서 채널을 꺼냄.
+		fmt.Println("go func()... 2")
+		c <- 11 //채널 c에 값을 보냄.
+		fmt.Println("go func()... 3")
+	}()
+
+	fmt.Println("result :", f(x)) // 고루틴에서 보낸값 출력
 }
