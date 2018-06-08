@@ -136,3 +136,14 @@ func Test_Channel(t *testing.T) {
 
 	fmt.Println("result :", f(x)) // 고루틴에서 보낸값 출력
 }
+
+func Test_Scanf(t *testing.T) {
+
+	fmt.Println("------ input")
+
+	inStr := ""
+	fmt.Scanf("%s", inStr)
+
+	fmt.Println("------ result :", inStr)
+
+}
