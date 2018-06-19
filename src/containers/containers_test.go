@@ -137,13 +137,45 @@ func Test_Channel(t *testing.T) {
 	fmt.Println("result :", f(x)) // 고루틴에서 보낸값 출력
 }
 
+type ttt struct {
+	A int
+	B int
+	C string
+}
+
+func (x *ttt) foo() {
+	x.A = 10
+	x.C = "abc"
+}
+
 func Test_Scanf(t *testing.T) {
 
-	fmt.Println("------ input")
+	c := make(chan int)
+	//go func(cc chan<- int) {
+	go func(cc <-chan int) {
+		i := 0
+		for {
+			time.Sleep(1 * time.Second)
+			fmt.Println("i:", i, ", c:", <-cc)
+			i++
+		}
+		//cc <- 10
+	}(c)
 
-	inStr := ""
-	fmt.Scanf("%s", inStr)
+	x := &ttt{} //new(ttt)
+	x.foo()
 
-	fmt.Println("------ result :", inStr)
+	Ttt(*x)
+	fmt.Println(x)
+
+	c <- 10
+
+	c <- 20
+	time.Sleep(1 * time.Second)
+	c <- 30
+}
+
+func Ttt(param ttt) {
+	param.A = 20
 
 }

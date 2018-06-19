@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"pipe/src/middleweb/authprovider"
 	"strings"
 
 	"github.com/goincremental/negroni-sessions"
@@ -19,13 +21,29 @@ const (
 )
 
 func init() {
+	auth_google := authprovider.GetAuthClient(authprovider.Google)
+
+	fmt.Println("ClientID:", auth_google.GetClientID())
+	fmt.Println("ClientSecret:", auth_google.GetClientSecret())
+	fmt.Println("RedirectURI:", auth_google.GetRedirectURI())
+	fmt.Println("IsSet:", auth_google.IsSet())
+
 	//gomniauth 정보 세팅
 	gomniauth.SetSecurityKey(authSecurityKey)
-	gomniauth.WithProviders(
-		google.New("99477725874-4rgkb0u7hfm89otbl9nmvqeghhvb363b.apps.googleusercontent.com",
-			"_yK-VcggrOzy41g0ek5ZMhxb",
-			"http://127.0.0.1:3000/auth/callback/google"),
-	)
+	if auth_google.IsSet() == false {
+		gomniauth.WithProviders(
+			google.New("99477725874-4rgkb0u7hfm89otbl9nmvqeghhvb363b.apps.googleusercontent.com",
+				"_yK-VcggrOzy41g0ek5ZMhxb",
+				"http://127.0.0.1:3000/auth/callback/google"),
+		)
+	} else {
+		gomniauth.WithProviders(
+			google.New(auth_google.GetClientID(),
+				auth_google.GetClientSecret(),
+				auth_google.GetRedirectURI()),
+		)
+	}
+
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

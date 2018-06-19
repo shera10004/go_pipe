@@ -23,7 +23,7 @@ func main() {
 	defer client.Close()
 
 	//동기호출
-	args := &Args{1, 2}
+	args := Args{1, 2}
 	reply := new(Reply)
 	err = client.Call("Calc.Sum", args, reply)
 	if err != nil {

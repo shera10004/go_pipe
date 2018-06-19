@@ -11,21 +11,41 @@ import (
 	"github.com/goincremental/negroni-sessions/cookiestore"
 	"github.com/julienschmidt/httprouter"
 	"github.com/unrolled/render"
+
+	"gopkg.in/mgo.v2"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
 	//애플리케이션에서 사용할 세션의 키 정보
 	sessionKey    = "simple_chat_session"
 	sessionSecret = "simple_chat_session_secret"
+
+	socketBufferSize = 1024
 )
 
-var renderer *render.Render
+var (
+	renderer     *render.Render
+	mongoSession *mgo.Session
+
+	upgrader = &websocket.Upgrader{
+		ReadBufferSize:  socketBufferSize,
+		WriteBufferSize: socketBufferSize,
+	}
+)
 
 func init() {
 	fmt.Println("main init()")
 
 	//렌더러 생성
 	renderer = render.New()
+
+	s, err := mgo.Dial("mongodb://localhost")
+	if err != nil {
+		panic(err)
+	}
+	mongoSession = s
 }
 
 func main() {
@@ -55,6 +75,20 @@ func main() {
 	})
 
 	router.GET("/auth/:action/:provider", loginHandler)
+
+	router.POST("/"+C_ROOMS, createRoom)
+	router.GET("/"+C_ROOMS, retrieveRooms)
+
+	router.GET("/"+C_ROOMS+"/:id/"+C_MESSAGES, retrieveMessage)
+
+	router.GET("/ws/:room_id", func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		socket, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Fatal("ServeHTTP:", err)
+			return
+		}
+		newClient(socket, ps.ByName("room_id"), GetCurrentUser(r))
+	})
 
 	//negroni 미들웨어 생성
 	n := negroni.Classic()
