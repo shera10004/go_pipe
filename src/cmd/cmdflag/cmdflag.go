@@ -3,9 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"pipe/src/cmd/cmdargs/cmdlib"
 )
 
 func main() {
+
+	cmdlib.ViewFunc()
 
 	title := flag.String("title", "", "영화 이름")
 	runtime := flag.Int("runtime", 0, "상영 시간")

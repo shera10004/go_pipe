@@ -27,7 +27,7 @@
             if(data != null){
                 for (var i=data.length-1 ; i>=0 ; i--){
                     addMessage(data[i]);
-                };
+                }
             }
         });
 
@@ -37,7 +37,7 @@
         }
         socket = new WebSocket(socketEndPoint + roomId);
         socket.onmessage = function(e){
-            addMessage(JSON.parse(e.data))
+            addMessage(JSON.parse(e.data));
         }
     }
 
