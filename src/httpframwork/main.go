@@ -17,36 +17,49 @@ type User struct {
 	AddressId string
 }
 
+const (
+	PATH_ROOt          = "/"
+	PATH_ABOUT         = "/about"
+	PATH_LOGIN         = "/login"
+	PATH_USERS_ID      = "/users/:id"
+	PATH_USERS_ID_ADDR = "/users/:user_id/addresses/:address_id"
+)
+
 func main() {
 
 	s := NewServer()
 
-	s.HandleFunc("GET", "/", func(c *Context) {
-		//fmt.Fprintln(c.ResponseWriter, "welcome!")
+	s.HandleFunc("GET", PATH_ROOt, func(c *Context) {
+		fmt.Println("[HandleFunc] -- index.html")
 		c.RenderTemplate("/public/index.html", map[string]interface{}{"time": time.Now()})
 	})
 
-	s.HandleFunc("GET", "/about", func(c *Context) {
+	s.HandleFunc("GET", PATH_ABOUT, func(c *Context) {
+		fmt.Println("[HandleFunc] -- about")
 		fmt.Fprintln(c.ResponseWriter, "about")
 	})
 
-	s.HandleFunc("GET", "/users/:id", func(c *Context) {
+	s.HandleFunc("GET", PATH_USERS_ID, func(c *Context) {
+		fmt.Println("[HandleFunc] -- users/:id")
 		u := User{Id: c.Params["id"].(string)}
 		c.RenderXml(u)
 	})
 
-	s.HandleFunc("GET", "/users/:user_id/addresses/:address_id", func(c *Context) {
+	s.HandleFunc("GET", PATH_USERS_ID_ADDR, func(c *Context) {
+		fmt.Println("[HandleFunc] -- users/:user_id/addresses/:address_id")
 		u := User{Id: c.Params["user_id"].(string),
 			AddressId: c.Params["address_id"].(string),
 		}
 		c.RenderJson(u)
 	})
 
-	s.HandleFunc("GET", "/login", func(c *Context) {
+	s.HandleFunc("GET", PATH_LOGIN, func(c *Context) {
+		fmt.Println("[HandleFunc] -- login[GET]")
 		c.RenderTemplate("/public/login.html", map[string]interface{}{"message": "로그인이필요합니다"})
 	})
 
-	s.HandleFunc("POST", "/login", func(c *Context) {
+	s.HandleFunc("POST", PATH_LOGIN, func(c *Context) {
+		fmt.Println("[HandleFunc] -- login[POST]")
 		//로그인 정보를 확인하여 쿠키에 인증 토큰 값 기록
 		fmt.Println("params len:", len(c.Params))
 		for k, v := range c.Params {
@@ -80,7 +93,7 @@ func AuthHandler(next ContextFunc) ContextFunc {
 	fmt.Println("<AuthHandler")
 	ignore := []string{"/login", "public/index.html"}
 	return func(c *Context) {
-		log.Println("[AuthHandler] url_path:", c.Request.URL.Path)
+		log.Println("--AuthHandler URL_PATH:", c.Request.URL.Path)
 
 		// url prefix가 "/login" , "public/index.html"이면 auth를 체크하지 않음.
 		for _, s := range ignore {
@@ -111,7 +124,7 @@ func AuthHandler(next ContextFunc) ContextFunc {
 		}
 
 		fmt.Println("AuthHandler - login 인증 안됨.")
-		c.Redirect("/login")
+		c.Redirect(PATH_LOGIN)
 
 	}
 }

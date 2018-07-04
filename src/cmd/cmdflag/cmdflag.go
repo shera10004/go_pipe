@@ -16,6 +16,7 @@ func main() {
 	release := flag.Bool("release", false, "개봉 여부")
 
 	flag.Parse() //명령줄 옵션의 내용을 각 자료형별로 분석
+	fmt.Println("-----------------")
 	if flag.NFlag() == 0 {
 		flag.Usage() //명령줄 기본사용법 출력
 		return

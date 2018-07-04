@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
 
 type router struct {
-	contexts map[string]map[string]ContextFunc
+	contexts map[string]map[string]ContextFunc //[method]([pattern](ContextFunc]))
 }
 
 func (r *router) HandleFunc(method, pattern string, cf ContextFunc) {
@@ -24,20 +25,20 @@ func (r *router) HandleFunc(method, pattern string, cf ContextFunc) {
 }
 
 func (r *router) getContextFunc() ContextFunc {
-	fmt.Println("< router::getContextFunc")
+	fmt.Println("<router::getContextFunc")
 	return func(c *Context) {
 
-		fmt.Println("getContextFunc <- ", c)
+		log.Println("getContextFunc <- ", c)
 
 		//http 메서드에 맞는 모든 handlers를 반복하면 요청 URL에 해당하는 handler를 찾음.
 		for pattern, handler := range r.contexts[c.Request.Method] {
 			if ok, params := match(pattern, c.Request.URL.Path); ok == true {
 				for k, v := range params {
 					c.Params[k] = v
-					fmt.Println("match-params[", k, "]", v)
+					log.Println("match-params[", k, "]", v)
 				}
 
-				fmt.Println(">>>>match-params", len(params))
+				log.Println(">>>>match-params", len(params))
 				//요청 URL에 해당하는 handler수행
 				handler(c)
 				return
@@ -53,7 +54,7 @@ func (r *router) getContextFunc() ContextFunc {
 
 func match(pattern, path string) (bool, map[string]string) {
 
-	fmt.Println("match pattern:", pattern, ", path:", path)
+	fmt.Println("[match] pattern:", pattern, ", path:", path)
 
 	//패턴과 패스가 정확히 일치하면 바로 true를 반환
 	if pattern == path {

@@ -4,7 +4,10 @@ import (
 	"container/heap"
 	"container/list"
 	"container/ring"
+	"context"
 	"fmt"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -177,5 +180,271 @@ func Test_Scanf(t *testing.T) {
 
 func Ttt(param ttt) {
 	param.A = 20
+
+}
+
+func Test_SliceRemove(t *testing.T) {
+	sl := make([]string, 0)
+	sl = append(sl, "a")
+	sl = append(sl, "b")
+	sl = append(sl, "c")
+
+	removeindex := 1
+	if len(sl) > removeindex {
+		sl = append(sl[:removeindex], sl[removeindex+1:]...)
+	}
+
+	fmt.Println(len(sl))
+	for i, v := range sl {
+		fmt.Printf("%d  value:%v\n", i, v)
+	}
+
+}
+
+func TestUint32(t *testing.T) {
+
+	v := uint32(1) //65535)
+	d := uint32(0x01000193)
+	c := uint32(213)
+
+	r := v*d ^ c
+
+	fmt.Println(d)
+	fmt.Println(r)
+
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+func longFuncWithCtx(ctx context.Context) (string, error) {
+	select {
+	default:
+		return "success", nil
+	case <-ctx.Done():
+		re, ok := ctx.Value("key").(string)
+		if ok == true {
+			return re, ctx.Err()
+		}
+		return "false", ctx.Err()
+	}
+}
+
+func TestContext(t *testing.T) {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	const (
+		c_key  = "key"
+		c_key2 = "key2"
+	)
+
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), c_key, "Done"), time.Second*3)
+	//cancel()
+
+	type ctxData struct {
+		value string
+	}
+
+	ctx2, _ := context.WithDeadline(context.Background(), time.Now().Add(time.Second*5))
+	ctx2 = context.WithValue(ctx2, c_key, &ctxData{value: "우하하하"})
+	ctx2 = context.WithValue(ctx2, c_key2, []string{"xxxx"})
+
+	go func(c context.Context) {
+		fmt.Println("wait ctx2 -----")
+		loop := 0
+		for {
+			select {
+			default:
+				if v := c.Value(c_key); v != nil {
+					if re, ok := v.(*ctxData); ok {
+						re.value = fmt.Sprintf("우하하하%v", loop)
+						if v := c.Value(c_key2); v != nil {
+							if re2, ok := v.([]string); ok {
+								re2[0] = fmt.Sprintf("sss%v", loop)
+							}
+						}
+
+						loop++
+						time.Sleep(time.Second)
+
+						continue
+					}
+				}
+				fmt.Println("Context Value ERROR")
+				goto FUNC_OUT
+
+			case <-(c).Done():
+				fmt.Println("Done ctx2 -----")
+				goto FUNC_OUT
+			}
+		}
+	FUNC_OUT:
+	}(ctx2)
+
+	go func(c context.Context) {
+		<-(c).Done()
+		if v := c.Value(c_key); v != nil {
+			if re, ok := v.(*ctxData); ok {
+				fmt.Printf(" ctx2 key: %v \n", re)
+			}
+		}
+		if v := c.Value(c_key2); v != nil {
+			if re, ok := v.([]string); ok {
+				fmt.Printf(" ctx2 key2: %v \n", re[0])
+			}
+		}
+
+	}(ctx2)
+
+	_ = ctx
+	_ = cancel
+
+	jobCount := 10
+	var wg sync.WaitGroup
+	for i := 0; i < jobCount; i++ {
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			result, err := longFuncWithCtx(ctx)
+
+			if err != nil {
+				fmt.Println(i, ":", result, "/", err)
+			} else {
+				fmt.Println(i, ":", result, "/", err)
+			}
+
+		}()
+
+		time.Sleep(time.Second)
+	}
+
+	wg.Wait()
+
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+func TestChanGetSet(t *testing.T) {
+
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	about := make(chan struct{})
+	cv := make(chan string)
+	counter := 0
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	//go func(a <-chan struct{}, c chan<- string) {
+	go func() {
+		defer wg.Done()
+		//EXITA:
+		for {
+			select {
+			case <-about:
+				fmt.Println("about")
+				close(cv)
+				//break EXITA
+				goto EXITB
+
+			default:
+				str := fmt.Sprintf("str:%v", counter)
+				cv <- str
+				time.Sleep(100 * time.Millisecond)
+				counter++
+			}
+
+		}
+
+	EXITB:
+		fmt.Println(":: EXIT!!")
+	}()
+	//}(about, cv)
+
+	//fmt.Println(about)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			if view, ok := <-cv; ok {
+				fmt.Println(view)
+			} else {
+				break
+			}
+		}
+		//*/
+
+		fmt.Println("func println out!")
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			if counter == 5 {
+				about <- struct{}{}
+				break
+			}
+		}
+		fmt.Println("func count out!")
+	}()
+
+	wg.Wait()
+
+	fmt.Println("func exit!")
+
+}
+
+//////////////////////////////////////////////////////////////////////////
+type stref struct {
+	name string
+	id   int
+	sl   []int
+}
+
+func (sr *stref) IncSlice(v int) {
+	sr.sl = append(sr.sl, v)
+}
+
+func strefCall(s *stref, name string, id int) {
+	s.name = name
+	s.id = id
+}
+func appendSliceRef(sl *[]int, v int) {
+	*sl = append(*sl, v)
+}
+func appendSliceVal(sl []int, v int) {
+	sl = append(sl, v)
+}
+
+func appendStrefVal(sr *stref, v int) {
+	sr.sl = append(sr.sl, v)
+}
+func addSliceVal(sl []int, v int) {
+	sl = append(sl, v)
+	for i, val := range sl {
+		sl[i] = val + v
+	}
+
+	_ = sl
+
+}
+func TestRef(t *testing.T) {
+
+	sr := stref{}
+	sl := []int{}
+	strefCall(&sr, "a", 1)
+	appendSliceRef(&sl, 1)
+	appendSliceRef(&sl, 2)
+	appendSliceRef(&sl, 3)
+	appendSliceVal(sl, 4)
+
+	addSliceVal(sl, 10)
+
+	appendStrefVal(&sr, 1)
+
+	sr.IncSlice(2)
+
+	fmt.Printf("stref -> %#v\n", sr)
+	fmt.Printf("sl -> %#v\n", sl)
 
 }

@@ -16,6 +16,8 @@ type Middleware func(next ContextFunc) ContextFunc
 func logHandler(next ContextFunc) ContextFunc {
 	fmt.Println("<logHandler")
 	return func(c *Context) {
+		log.Println("--logHandler")
+
 		//next(c)를 실행하기 전에 현재 시간을 기록
 		t := time.Now()
 
@@ -33,7 +35,9 @@ func logHandler(next ContextFunc) ContextFunc {
 func recoverHandler(next ContextFunc) ContextFunc {
 	fmt.Println("<recoverHandler")
 	return func(c *Context) {
+		log.Println("--recoverHandler")
 		defer func() {
+			log.Println("--recover check...")
 			if err := recover(); err != nil {
 				log.Printf("panic: %+v", err)
 				http.Error(c.ResponseWriter,
@@ -48,8 +52,9 @@ func recoverHandler(next ContextFunc) ContextFunc {
 func parseFormHandler(next ContextFunc) ContextFunc {
 	fmt.Println("<parseFormHandler")
 	return func(c *Context) {
+		log.Println("--parseFormHandler")
 		c.Request.ParseForm()
-		fmt.Println(c.Request.PostForm)
+		log.Println(c.Request.PostForm)
 		for k, v := range c.Request.PostForm {
 			if len(v) > 0 {
 				c.Params[k] = v[0]
@@ -63,6 +68,7 @@ func parseFormHandler(next ContextFunc) ContextFunc {
 func parseJSONBodyHandler(next ContextFunc) ContextFunc {
 	fmt.Println("<parseJSONBodyHandler")
 	return func(c *Context) {
+		log.Println("--parseJSONBodyHandler")
 		var m map[string]interface{}
 		if json.NewDecoder(c.Request.Body).Decode(&m); len(m) > 0 {
 			for k, v := range m {
@@ -81,7 +87,7 @@ func staticHandler(next ContextFunc) ContextFunc {
 		indexFile = "index.html"
 	)
 	return func(c *Context) {
-		fmt.Println("staticHandler <--- ", c)
+		log.Println("--staticHandler")
 		//http 메서드가 GET이나 HEAD가 아니면 바로 다음 핸들러 수행
 		if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
 			next(c)

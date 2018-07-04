@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -22,9 +23,8 @@ type GSocket struct {
 	rBufferSize int
 	readBuffer  []byte
 	userMessage func([]byte, int)
+	mu          sync.Mutex
 }
-
-var socket GSocket
 
 func (s *GSocket) Init() {
 	s.connState = NET_CLOSE
@@ -32,10 +32,12 @@ func (s *GSocket) Init() {
 	s.readBuffer = make([]byte, s.rBufferSize)
 }
 func (s *GSocket) Close() {
+	s.mu.Lock()
 	if s.connState == NET_SUCCESS {
 		s.session.Close()
 	}
 	s.connState = NET_CLOSE
+	s.mu.Unlock()
 }
 func (s *GSocket) MessageCallback(f func(msg []byte, size int)) {
 	s.userMessage = f
@@ -52,48 +54,46 @@ func (s GSocket) ConnectionState() int {
 	return s.connState
 }
 func (s *GSocket) Connect_to_server(ip string, port int) {
-	socket.connState = NET_TRYCONNECT
+	s.connState = NET_TRYCONNECT
 
 	addr := fmt.Sprintf("%s:%d", ip, port)
 	fmt.Println("connect to", addr)
 
 	var err error
-	socket.session, err = net.Dial(conn_tcp, addr)
+	s.session, err = net.Dial(conn_tcp, addr)
 	if err != nil {
 		fmt.Println("Dial_err", err)
-		socket.connState = NET_CLOSE
+		s.connState = NET_CLOSE
 	}
 
-	socket.connState = NET_SUCCESS
-	go func(s *GSocket) {
+	fmt.Println("connect ok!")
+	s.connState = NET_SUCCESS
+	go func(gs *GSocket) {
 		for {
-			size, err := s.session.Read(s.readBuffer)
+			size, err := gs.session.Read(gs.readBuffer)
 			if err != nil {
-				s.Close()
+				fmt.Println("Read error :", err)
+				gs.Close()
 				return
 			}
-			fmt.Println("recv size :", size)
+			//fmt.Println("recv size :", size)
 			s.userMessage(s.readBuffer, size)
+
 		}
 	}(s)
+
+	input_msg := "hello_"
+	s.Request([]byte(input_msg))
 
 	return
 }
 
-func main() {
-
-	socket = GSocket{}
+func run() {
+	socket := GSocket{}
 	socket.Init()
-
-	socket.Connect_to_server(NetLocalHost, NetPort)
-	socket.MessageCallback(func(msg []byte, size int) {
-		recvmsg := string(msg[:size])
-		fmt.Println("recvmsg:", recvmsg)
-	})
-
+	counter := 0
 	defer socket.Close()
 
-	w_count := 0
 	for {
 
 		cState := socket.ConnectionState()
@@ -101,29 +101,36 @@ func main() {
 		if cState == NET_CLOSE {
 			fmt.Println("socket is closed")
 			socket.Connect_to_server(NetLocalHost, NetPort)
+			socket.MessageCallback(func(msg []byte, size int) {
+				recvmsg := string(msg[:size])
+				_ = recvmsg
+				//fmt.Println("recvmsg:", recvmsg)
+
+				rmsg := fmt.Sprintf("good_%v", counter)
+				counter++
+				socket.Request([]byte(rmsg))
+			})
+
 			timesleep(0.5)
+			continue
 		} else if cState == NET_TRYCONNECT {
+			fmt.Println("socket is NET_TRYCONNECT")
+			timesleep(0.05)
 			continue
 		}
 
-		/*
-			fmt.Println("command message :")
-			var input_msg string
-			_, sErr := fmt.Scanln(&input_msg)
-			if sErr != nil {
-				fmt.Println("Scanln error :", sErr)
-				continue
-			}
-			fmt.Println("input_msg :", input_msg)
-			//*/
-
-		input_msg := "hello_"
-		wmsg := fmt.Sprintf("%s _ %d", input_msg, w_count)
-		w_count++
-
-		socket.Request([]byte(wmsg))
 		timesleep(0.05)
+	}
+}
 
+func main() {
+
+	for i := 0; i < 2000; i++ {
+		go run()
+	}
+
+	for {
+		time.Sleep(100 * time.Second)
 	}
 }
 

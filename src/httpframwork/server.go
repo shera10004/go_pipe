@@ -25,7 +25,7 @@ func NewServer() *Server {
 		parseJSONBodyHandler,
 	}
 
-	fmt.Println("> NewServer")
+	fmt.Println("< NewServer")
 	return s
 }
 
@@ -39,7 +39,7 @@ func (s *Server) Run(addr string) {
 		s.startHandler = s.middlewares[i](s.startHandler)
 	}
 
-	fmt.Println("> web server Run...")
+	fmt.Println("> WEB SERVER RUN...")
 	//웹 서버 시작
 	if err := http.ListenAndServe(addr, s); err != nil {
 		panic(err)
@@ -48,7 +48,7 @@ func (s *Server) Run(addr string) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Println("ServeHTTP")
+	fmt.Println("---ServeHTTP")
 
 	//Context 생성
 	c := &Context{

@@ -2,23 +2,50 @@ package testreflect
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
+
+type ctType struct {
+	Tname string
+}
 
 type Item struct {
 	Name string `user name`
 	Id   int    `user id`
+	Ctt  ctType
+}
+
+func (i Item) SetCt(ct ctType) Item {
+	i.Ctt = ct
+
+	return i
 }
 
 func (i Item) Show() {
 	fmt.Printf("Name:%v , Id:%v\n", i.Name, i.Id)
 }
 
+func (i Item) ShowId() {
+	fmt.Println("id:", i.Id)
+}
+
 func (i Item) TLog(n int) string {
 	return fmt.Sprintf("TLogValue : %v", n)
+}
+
+// 기본적으로 reflect에서 private함수는 지원하지 않는다. but github에 private method를 지원하는 reflect패키지가 있당!!!!
+func (i Item) privateFunc() {
+	fmt.Println("Item.privateFunc")
+}
+
+//본 함수를 reflect로 읽기 위해서는 reflect.TypeOf(&item) 주소값을 넘겨 주어야 한다.
+func (i *Item) SetID(id int) {
+	i.Id = id
 }
 
 func Test_Reflect(t *testing.T) {
@@ -93,52 +120,97 @@ func TitleCase(s string, i int) (string, int) {
 	return strings.Title(s), i * 10
 }
 
-func Test_FuncCall(t *testing.T) {
-	caption := "go is an open souce programming language"
-	caption2 := 18
+func Test_FuncCallA(t *testing.T) {
+	item := Item{Name: "kjs", Id: 22}
 
-	title, title2 := TitleCase(caption, caption2)
-	fmt.Println(title, title2)
+	var stType = reflect.TypeOf((*Item)(nil)).Elem()
+	//var stValue = reflect.ValueOf((*Item)(nil))
 
-	fmt.Println("-----------------------------------------")
+	fmt.Println("stType:", stType)
 
-	titleFuncValue := reflect.ValueOf(TitleCase)
+	iType := reflect.TypeOf(&item) // &타입으로 보내면 *형 함수도 처리할 수 있다.
+	fmt.Println("iType:", iType)
 
-	fmt.Printf("%#+v\n", titleFuncValue)
-	values := titleFuncValue.Call([]reflect.Value{reflect.ValueOf(caption), reflect.ValueOf(caption2)})
+	iValue := reflect.ValueOf(&item)
+	fmt.Println("iValue:", iValue)
 
-	fmt.Println(len(values))
+	reflectValue := iType
 
-	title = values[0].String()
-	title2 = int(values[1].Int())
-	fmt.Println(title, title2)
+	for i := 0; i < reflectValue.NumMethod(); i++ {
 
-	fmt.Println("-----------------------------------------")
+		method := reflectValue.Method(i)
 
-	{
-		item := Item{Name: "kjs", Id: 21}
+		if method.Name == "Show" {
+			fmt.Println("name:", method.Name)
+			fmt.Println("funcType", reflect.Indirect(method.Func))
 
-		itemType := reflect.TypeOf(item.Show)
-		itemFunc := reflect.ValueOf(item.Show)
-		fmt.Println("함수의 입력 파라미터 갯수 :", itemType.NumIn())
-		fmt.Println("함수의 리턴 인자 갯수 :", itemType.NumOut())
-		_ = itemFunc.Call(nil)
+			for j := 0; j < method.Type.NumIn(); j++ {
+				fmt.Println("-", method.Type.In(j))
+			}
+
+			mFunc1 := method.Func                                      //Server
+			mFunc2 := reflect.ValueOf(&item).MethodByName(method.Name) //
+
+			fmt.Println(mFunc1, mFunc2)
+
+			rFunc := mFunc1
+
+			fmt.Println("Call by Method")
+			retVals := rFunc.Call([]reflect.Value{reflect.ValueOf(&item)}) //case mFunc1
+			//retVals := rFunc.Call(nil)									//case mFunc2
+			for _, v := range retVals {
+				fmt.Println(v)
+			}
+		} else {
+			fmt.Println(method.Func)
+		}
+		fmt.Println("-------")
 	}
 
+}
+
+func Test_FuncCall(t *testing.T) {
+
 	fmt.Println("-----------------------------------------")
 
 	{
+		caption := "go is an open souce programming language"
+		caption2 := 18
+
+		titleFuncValue := reflect.ValueOf(TitleCase)
+
+		fmt.Printf("%#+v\n", titleFuncValue)
+		values := titleFuncValue.Call([]reflect.Value{reflect.ValueOf(caption), reflect.ValueOf(caption2)})
+
+		fmt.Println(len(values))
+
+		title := values[0].String()
+		title2 := int(values[1].Int())
+		fmt.Println(title, title2)
+	}
+
+	fmt.Println("===============================================")
+
+	{
+		var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+		_ = contextType
+
+		var stType = reflect.TypeOf((*ctType)(nil)).Elem()
+		_ = stType
+
 		item := Item{Name: "kjs", Id: 22}
 
-		itemType := reflect.TypeOf(item)
+		itemType := reflect.TypeOf(&item)
 		fmt.Println("리플렉션 String :", itemType.String())
 		fmt.Println("리플렉션 Name :", itemType.Name())
 
 		fmt.Println("함수 갯수 :", itemType.NumMethod())
-		fmt.Println(">")
+		fmt.Println(">\n")
+
 		for i := 0; i < itemType.NumMethod(); i++ {
 			method := itemType.Method(i)
 			fmt.Println("함수 이름 :", method.Name)
+			fmt.Println("-----------------------------------------")
 
 			mType := method.Type
 			mCallValue := reflect.ValueOf(&item).MethodByName(method.Name)
@@ -153,6 +225,9 @@ func Test_FuncCall(t *testing.T) {
 					continue
 				}
 				inTypes = append(inTypes, mType.In(i))
+				if mType.In(i) == stType {
+					fmt.Println("ctType struct !!")
+				}
 			}
 
 			outTypes := []reflect.Type{}
@@ -164,7 +239,6 @@ func Test_FuncCall(t *testing.T) {
 			}
 
 			if len(inTypes) > 0 {
-				outValues := []reflect.Value{}
 				inParams := []reflect.Value{}
 				for _, t := range inTypes {
 					switch t.Kind() {
@@ -174,17 +248,24 @@ func Test_FuncCall(t *testing.T) {
 						inParams = append(inParams, reflect.ValueOf(18.5))
 					case reflect.String:
 						inParams = append(inParams, reflect.ValueOf("a"))
+					case reflect.Struct:
+						if t == stType {
+							inParams = append(inParams, reflect.ValueOf(ctType{Tname: "a1818"}))
+						} else {
+							fmt.Println("What the fuck? struct!")
+						}
 					default:
 						fmt.Println("???", t.Kind())
 					}
 				}
 
 				fmt.Println("call ----inParams")
-				outValues = mCallValue.Call(inParams)
+				outValues := mCallValue.Call(inParams)
 
 				for _, v := range outValues {
 					fmt.Println(v)
 				}
+				fmt.Println(item)
 
 			} else {
 				if len(outTypes) == 0 {
@@ -199,7 +280,7 @@ func Test_FuncCall(t *testing.T) {
 				}
 			}
 
-			fmt.Println(">>")
+			fmt.Println(">>\n")
 		}
 
 		/*
@@ -268,5 +349,21 @@ func Test_Len(t *testing.T) {
 	f = 18
 
 	fmt.Println(Len(a), Len(b), Len(c), Len(d), Len(e), Len(f))
+
+}
+
+func Test_Loop(t *testing.T) {
+
+	var loop int32
+	loop = 1
+	cnt := 0
+
+	for i := atomic.LoadInt32(&loop); i == 1; {
+		cnt++
+		if cnt > 10 {
+			break
+		}
+	}
+	fmt.Println(cnt)
 
 }
