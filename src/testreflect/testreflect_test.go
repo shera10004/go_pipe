@@ -49,13 +49,22 @@ func (i *Item) SetID(id int) {
 }
 
 func Test_Reflect(t *testing.T) {
-
-	{
+	fmt.Println("************* Test_Reflect ****************")
+	run := func() { fmt.Println("run") }
+	defer func() {
+		run()
+	}()
+	_ = func() {
 		val1 := 69
 
-		fmt.Printf("TypeOf:%v , ValueOf:%v \n", reflect.TypeOf(val1), reflect.ValueOf(val1))
+		fmt.Printf("TypeOf:%v , ValueOf:%v %n\n", reflect.TypeOf(val1), reflect.ValueOf(val1), &val1)
 
 		rv := reflect.ValueOf(val1)
+		typeStr := rv.Type().Kind().String()
+		if typeStr != "ptr" {
+			fmt.Println("this reflect value is not ptr.", "this type is ", typeStr)
+		}
+
 		if rv.CanSet() {
 			rv.SetInt(18)
 		} else {
@@ -66,11 +75,10 @@ func Test_Reflect(t *testing.T) {
 			p.SetInt(88)
 			fmt.Println("val1 :", val1)
 		}
+
+		//return
 	}
-
-	fmt.Println("------------------------------")
-
-	{
+	_ = func() {
 		langs := []string{"a", "b", "c"}
 		sv := reflect.ValueOf(langs)
 		v := sv.Index(1)
@@ -85,23 +93,57 @@ func Test_Reflect(t *testing.T) {
 		fmt.Println("xlangs :", langs)
 
 	}
-
-	fmt.Println("------------------------------")
-
-	{
-		u := Item{
+	run = func() {
+		type Temp struct {
+			Name string
+			Id   int
+			age  int
+		}
+		u := Temp{
 			Name: "abc",
 			Id:   18,
+			age:  20,
 		}
 
-		uType := reflect.TypeOf(u)
-		uValue := reflect.ValueOf(u)
+		var uu interface{}
+		uu = &u
+
+		uValue := reflect.ValueOf(uu)
+		uType := uValue.Type()
+
+		if uType.Kind() == reflect.Ptr {
+			fmt.Println("Pointer????")
+			t := uType.Elem()
+
+			if t.Kind() == reflect.Struct {
+				fmt.Println("struct")
+				uType = t
+			} else {
+				fmt.Println("struct not ", t.Kind())
+
+				return
+			}
+
+		}
 
 		fmt.Printf("[%v] \n", uType)
+		for i := 0; i < uType.NumField(); i++ {
+			sf := uType.Field(i)
+			fmt.Printf("%v : %v - %v \n", sf.Type, sf.Name, sf.Tag)
 
-		if fName, ok := uType.FieldByName("Name"); ok {
-			fmt.Println(fName.Type, ", ", fName.Name, ", ", fName.Tag)
+			v := []byte(sf.Name)
+			if v[0] >= 65 && v[0] <= 90 {
+				fmt.Println("True")
+			} else {
+				fmt.Println("False")
+			}
+
 		}
+		/*
+			if fName, ok := uType.FieldByName("Name"); ok {
+				fmt.Println(fName.Type, ", ", fName.Name, ", ", fName.Tag)
+			}
+		*/
 
 		if uValue.CanSet() {
 

@@ -1,16 +1,351 @@
 package containers
 
 import (
+	"bytes"
 	"container/heap"
 	"container/list"
 	"container/ring"
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"net"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"vendorpkg/abc"
 )
+
+func Test_Ip(t *testing.T) {
+	conn, err := net.ListenPacket("udp", ":0")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(conn.LocalAddr().String())
+
+	smap := map[int]*string{}
+	rValue := "aaa"
+	smap[1] = &rValue
+	smap[2] = &rValue
+
+	rValue = "bbb"
+
+	for k, v := range smap {
+		fmt.Printf("k:%v , v:%v\n", k, *v)
+	}
+}
+
+/////////////// 임베딩 test ////////////////////////
+
+func Test_Dummy0(t *testing.T) {
+	sl := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	pf := func(ss []int) {
+		for i := 1; i < len(ss); i++ {
+			fmt.Printf("%#v\n", ss)
+		}
+
+	}
+
+	for i := range sl {
+		pf(sl[i : i+1])
+	}
+
+}
+
+func Test_Dummy(t *testing.T) {
+
+	const MAXCOUNT = 3
+
+	resultEntries := []string{
+		"a",
+		"b",
+		"c",
+		"d",
+	}
+	pendingQueries := 0
+	reply := make(chan string, MAXCOUNT)
+
+	for {
+		for i := 0; i < len(resultEntries) && pendingQueries < MAXCOUNT; i++ {
+			n := resultEntries[i]
+			pendingQueries++
+			go func(v string) {
+				//fmt.Println("value :", v)
+				time.Sleep(time.Millisecond * 500)
+				reply <- v
+			}(n)
+		} //for
+
+		if pendingQueries == 0 {
+			break
+		}
+
+		re := <-reply
+		if len(resultEntries) < 10 {
+			resultEntries = append(resultEntries, re)
+			fmt.Printf("%#v\n", resultEntries)
+		} else {
+			resultEntries = nil
+		}
+
+		pendingQueries--
+
+	} //for
+
+}
+
+/////////////// 채널 select close ////////////////////////
+
+func Test_SelectClose(t *testing.T) {
+
+	cDone := make(chan bool)
+	cDone2 := make(chan bool)
+	isOut := false
+
+	go func() {
+		time.Sleep(time.Second * 60)
+		isOut = true
+	}()
+
+	// sleep and done channel!
+	go func() {
+		time.Sleep(time.Second * 3)
+		fmt.Println("close chanell <-")
+		cDone <- true
+
+		time.Sleep(time.Second * 6)
+		fmt.Println("close chanell")
+		close(cDone)
+	}()
+	getResult := func() string {
+
+		select {
+		case <-cDone2:
+			return "cDone2"
+
+		case _, ok := <-cDone:
+			if ok == false {
+				return "cDone close"
+			}
+			return "cDone true"
+		default:
+			return "default"
+		}
+	}
+
+	for {
+		re := getResult()
+
+		fmt.Println("re :", re)
+		if isOut == true {
+			break
+		}
+
+		time.Sleep(time.Millisecond * 300)
+	}
+
+}
+
+/////////////// 채널 select 2 ////////////////////////
+
+func Test_SelectInn(t *testing.T) {
+	sc := SelectConn{
+		addpending: make(chan *string),
+		closing:    make(chan error),
+	}
+
+	go func() {
+		input := ""
+		fmt.Scanf("%v", input)
+	}()
+
+	go func() {
+		fmt.Println("wait pending")
+
+		pValue := <-sc.addpending
+		fmt.Println("pending value:", *pValue)
+		sc.callback.print()
+		sc.callback.closing <- nil
+
+	}()
+
+	time.Sleep(time.Second * 2)
+
+	go func() {
+		fmt.Println("wait 5 time")
+		time.Sleep(time.Second * 1)
+		fmt.Println("closing chan<-")
+		sc.closing <- errClosed
+	}()
+	//*/
+
+	time.Sleep(time.Second * 2)
+
+	cEnd := sc.pending(10, func() {
+		fmt.Println("callback", sc.id)
+	})
+
+	end := <-cEnd
+
+	fmt.Println("main end :", end)
+}
+
+type SelectConn struct {
+	id         int
+	callback   *sCallBack
+	addpending chan *string
+	closing    chan error
+}
+type sCallBack struct {
+	closing chan error
+	print   func()
+}
+
+var errClosed = errors.New("app closed")
+
+func (sc *SelectConn) pending(id int, callback func()) <-chan error {
+	ch := make(chan error, 1)
+
+	sc.id = id
+	sc.callback = &sCallBack{
+		closing: ch,
+		print:   callback,
+	}
+
+	pd := "pending"
+
+	fmt.Println("in pending")
+	select {
+	case <-sc.closing:
+		fmt.Println("end err")
+		ch <- errClosed
+
+	case sc.addpending <- &pd:
+
+	}
+	return ch
+}
+
+/////////////////////////////////////////////////////
+func Test_SelectChannel(t *testing.T) {
+
+	cc := make(chan string)
+	dd := make(chan string)
+	go func(a chan string, b chan string) {
+		for {
+			select {
+			case v, ok := <-a:
+				if ok {
+					fmt.Println("Acc :", v)
+				}
+
+			case v := <-b:
+				fmt.Println("dd :", v)
+			}
+
+			fmt.Println("default")
+			time.Sleep(time.Millisecond * 100)
+		}
+
+	}(cc, dd)
+
+	go func(x chan string) {
+		v := <-x
+		fmt.Println("Bcc :", v)
+	}(cc)
+
+	//cc <- "aaa"
+	timer := time.NewTimer(time.Second * 2)
+
+	<-timer.C
+
+	cc <- "cccc"
+
+	isStop := timer.Stop()
+	fmt.Println("isStop:", isStop)
+
+	dd <- "ddd"
+
+	//close(cc)
+
+	time.Sleep(time.Second * 3)
+
+	fmt.Println("isStop:", isStop)
+	fmt.Println("end")
+
+}
+
+// MAP Test
+func inputMap(m map[string]int, key string, v int) {
+	m[key] = v
+}
+func Test_Map(t *testing.T) {
+	cMap := map[string]int{}
+
+	inputMap(cMap, "a", 1)
+	inputMap(cMap, "b", 2)
+	inputMap(cMap, "c", 3)
+
+	fmt.Printf("%#v \n", cMap)
+}
+
+func Test_Switch(t *testing.T) {
+	a := 0
+	b := "b"
+	c := true
+
+	switch {
+	case a == 0:
+		fmt.Println("a ok")
+	case b == "b":
+		fmt.Println("b is ok")
+	case c == false:
+		fmt.Println("c is ok")
+	default:
+		fmt.Println("default")
+
+	}
+}
+
+func Test_Closer(t *testing.T) {
+	funcA := func(s string) func(int) string {
+		re := fmt.Sprintf("func:%v", s)
+		return func(v int) string {
+			return fmt.Sprintf("%s -> %v", re, v)
+		}
+	}
+
+	subA := funcA("A")
+	fmt.Println("subA:", subA(18))
+
+	fmt.Println("subA:", funcA("B")(20))
+
+	funcB := func(i int, foo func(int)) func(int) {
+		teni := i + 10
+		return func(j int) {
+			foo(teni + j)
+		}
+	}
+
+	resultB := funcB(10, func(v int) {
+		fmt.Println("resultB :", v)
+	})
+	resultB = funcB(10, resultB)
+	resultB = funcB(10, resultB)
+	resultB = funcB(10, resultB)
+
+	resultB(10)
+}
+
+// vendor 폴더 패키지 임포트 테스트
+func Test_VendorPkg(t *testing.T) {
+	fmt.Println(abc.GetString())
+}
 
 // 이중 연결리스트 테스트
 
@@ -183,6 +518,22 @@ func Ttt(param ttt) {
 
 }
 
+// 슬라이스 부분 삽입
+func Test_SliceAppend(t *testing.T) {
+	sa := []string{
+		"a", "b", "c",
+	}
+	sb := []string{
+		"d", "e", "f",
+	}
+
+	//sa = append(sa[:0], sb...)
+	sa = append(sa[:1], sb...)
+
+	fmt.Printf("%#v\n", sa)
+}
+
+// 슬라이스 삭제
 func Test_SliceRemove(t *testing.T) {
 	sl := make([]string, 0)
 	sl = append(sl, "a")
@@ -323,6 +674,40 @@ func TestContext(t *testing.T) {
 
 //////////////////////////////////////////////////////////////////////////
 
+func TestChanFor(t *testing.T) {
+
+	//wg := sync.WaitGroup{}
+	chs := make(chan int) //[]chan string
+
+	go func() {
+		defer func() {
+			close(chs)
+			fmt.Println("end func1")
+		}()
+
+		for i := 0; i < 10; i++ {
+			chs <- i //fmt.Sprintf("%v", i)
+			time.Sleep(time.Millisecond * 100)
+		} //for
+
+	}()
+
+EXIT:
+	for {
+		select {
+		case v, ok := <-chs:
+			fmt.Println("chain value:", v, ok)
+			if ok == false {
+				break EXIT
+			}
+		} //select
+	} //for
+
+	//wg.Wait()
+
+	fmt.Println("END")
+}
+
 func TestChanGetSet(t *testing.T) {
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -447,4 +832,204 @@ func TestRef(t *testing.T) {
 	fmt.Printf("stref -> %#v\n", sr)
 	fmt.Printf("sl -> %#v\n", sl)
 
+}
+
+///////////// 슬라이스 복사 //////////////////
+func TestSliceCopy(t *testing.T) {
+	sl := []string{
+		"a", //0
+		"b", //1
+		"c", //2
+		"d", //3
+	}
+
+	copy(sl[1:], sl[:1]) // 0,1번을 1번인덱스로 복사
+	//sl[0] = "x"
+
+	fmt.Printf("%#v\n", sl)
+
+	a := 1
+	b := 0
+	v := a ^ b
+	fmt.Println("value :", v)
+}
+
+func TestSliceRef(t *testing.T) {
+	sl := []byte{1, 2, 3, 4}
+
+	sl2 := []byte{}
+	sl2 = sl
+
+	sl2[1] = 10 //주소 값은 다르지만 같은 데이타를 가리킨다
+
+	fmt.Printf("&sl %p \n", &sl)
+	fmt.Printf("&sl2 %p \n", &sl2)
+	fmt.Println("----")
+	fmt.Printf("sl value : %v \n", sl)
+
+	//슬라이스 복사는 이렇게...
+	//sl2 := make([]byte, len(sl))
+	//copy(sl2, sl)
+
+	//슬라이스 값 모두 비우기... nil을 대입하면 모두 클리어 된다.
+	//sl = nil
+
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+func TestInterfaceEmbeding(t *testing.T) {
+	testA := &printA{}
+	testB := printB{}
+
+	prints := []iPrint{testA, &testB}
+	for i, v := range prints {
+		val := strconv.Itoa(i)
+		v.Print(val)
+		v.Input(val + "- xxx")
+		v.Show()
+	}
+
+	fmt.Println("-----------------")
+
+	sets := []iSet{testA, testB}
+	testA.ISet("a", func(s string) {
+		testA.name = s
+	})
+	testB.ISet("b", func(s string) {
+		testB.id = s
+	})
+	for _, v := range sets {
+		v.Show()
+	}
+
+}
+
+type (
+	iPrint interface {
+		Input(s string)
+		Print(s string)
+		Show()
+	}
+	iSet interface {
+		ISet(s string, f func(s string))
+		Show()
+	}
+
+	printA struct {
+		name string
+	}
+
+	printB struct {
+		id string
+	}
+)
+
+func (this_printA printA) XX() {
+	x := this_printA.name
+	_ = x
+}
+func (c *printA) Input(s string) {
+	c.name = s
+}
+func (c printA) Input2(s string) {
+	c.name = s
+}
+
+func (c printA) Print(s string) {
+	fmt.Println("printA :", s)
+}
+
+func (c printA) ISet(s string, f func(string)) {
+	f(s)
+}
+func (c printA) Show() {
+	fmt.Println("PrintA :", c.name)
+}
+
+func (c *printB) Input(s string) {
+	c.id = s
+}
+
+func (c printB) Print(s string) {
+	fmt.Println("PrintB :", s)
+}
+
+func (c printB) ISet(s string, f func(string)) {
+	f(s)
+}
+func (c printB) Show() {
+	fmt.Println("PrintB :", c.id)
+}
+
+//////////////////////////////////////////////////////////
+func TestStringToByte(t *testing.T) {
+	//str := "eth.accounts\n"
+	str := "테스터"
+	src := []byte(str)
+
+	fmt.Printf("%v\n", string([]byte{0x65, 0x74, 0x68, 0x2e, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0xa}))
+	fmt.Printf("%v\n", string([]byte{0x4a, 0x53, 0x4f, 0x4e}))
+	fmt.Printf("%v\n", string([]byte{0x28, 0x7b, 0x22, 0x6a, 0x73, 0x6f, 0x6e, 0x72, 0x70, 0x63, 0x22, 0x3a, 0x22, 0x32, 0x2e, 0x30, 0x22, 0x7d, 0x29}))
+	fmt.Printf("----------------- \n")
+	//fmt.Printf("%v , %v\n", src, len(bytes.Runes(src)))
+	fmt.Printf("%v , %v\n", string(src), len([]rune(str)))
+
+	jstrs := []string{"ab", "cd", "ef"}
+	fmt.Printf("%v \n", strings.Join(jstrs, "-"))
+
+	buffer := bytes.Buffer{}
+	for _, v := range jstrs {
+		buffer.WriteString(v)
+	}
+	fmt.Println("buffer:", buffer.String())
+
+	var sourcemapSource interface{}
+	sourcemapSource = nil
+
+	if sourcemapSource == nil {
+
+		lines := bytes.Split(src, []byte("\n"))
+		lastLine := lines[len(lines)-1]
+
+		if bytes.HasPrefix(lastLine, []byte("//# sourceMappingURL=data:application/json")) {
+			bits := bytes.SplitN(lastLine, []byte(","), 2)
+
+			if len(bits) == 2 {
+				if d, err := base64.StdEncoding.DecodeString(string(bits[1])); err == nil {
+					sourcemapSource = d
+				}
+			}
+
+		}
+	}
+
+	fmt.Printf("%v \n", sourcemapSource)
+
+}
+
+//////////////////////////////////////////////////////////
+
+type ActionFunc func(int) int
+
+func selectType(t interface{}) string {
+
+	if _, ok := t.(func(int) int); ok == true {
+		return "func(int) int"
+	} else if _, ok := t.(ActionFunc); ok == true {
+		return "ActionFunc"
+	} else {
+		return "nothing"
+	}
+}
+
+func TestFuncType(t *testing.T) {
+	var actionFunc ActionFunc
+	var funcFunc func(int) int
+	var number int32
+	sl := []interface{}{actionFunc, funcFunc, number}
+
+	for i, v := range sl {
+		fmt.Println("id:", i, ", value:", selectType(v))
+	}
 }

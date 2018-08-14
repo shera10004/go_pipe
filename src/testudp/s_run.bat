@@ -1,0 +1,5 @@
+
+testudp --t=server
+
+
+pause
